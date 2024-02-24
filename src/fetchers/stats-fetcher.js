@@ -323,6 +323,7 @@ const fetchStats = async (
         "Content-Type": "application/json",
       },
     });
+    console.log(res2)
     stats.totalStars = res2["stars"];
 
   stats.rank = calculateRank({
