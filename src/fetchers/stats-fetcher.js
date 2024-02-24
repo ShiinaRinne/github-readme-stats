@@ -316,14 +316,23 @@ const fetchStats = async (
 
     // graphql api does not provide correct stars count, so we have to fetch it from another api
     // https://api.github.com/users/${username}/repos
-    const res2 = await axios({
-      method: "get",
-      url: `https://api.github-star-counter.workers.dev/user/${username}`,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    console.log(res2)
+    const fetchTotalStars = (variables, token) => {
+      return axios({
+        method: "get",
+        url: `https://api.github-star-counter.workers.dev/user/${variables.login}`,
+        headers: {
+          "Content-Type": "application/json"
+        },
+      });
+    }
+
+    let res2;
+    try {
+      res2 = await retryer(fetchTotalStars, { login: username });
+    } catch (err) {
+      logger.log(err);
+      throw new Error(err);
+    }
     stats.totalStars = res2["stars"];
 
   stats.rank = calculateRank({
