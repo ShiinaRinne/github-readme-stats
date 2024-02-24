@@ -204,6 +204,33 @@ const totalCommitsFetcher = async (username) => {
   return totalCount;
 };
 
+
+async function github(path) {
+  const GITHUB_API = 'https://api.github.com'
+  return fetch(`${GITHUB_API}${path}`, {
+    headers: {
+      'User-Agent': 'GitHub-Start-Counter',
+    },
+    // @ts-ignore
+    cf: { cacheTTl: 900 },
+  })
+}
+
+async function getRepos(user, page){
+  const path = `/users/${user}/repos?per_page=100&page=${page}`
+  const resp = await github(path)
+  const repos = await resp.json()
+  return repos.reduce(
+    (acc, cur) => {
+      acc.stars += cur.stargazers_count
+      acc.forks += cur.forks
+      return acc
+    },
+    { stars: 0, forks: 0 },
+  )
+}
+
+
 /**
  * @typedef {import("./types").StatsData} StatsData Stats data.
  */
@@ -306,24 +333,28 @@ const fetchStats = async (
   // Retrieve stars while filtering out repositories to be hidden.
   let repoToHide = new Set(exclude_repo);
 
-  stats.totalStars = user.repositories.nodes
-    .filter((data) => {
-      return !repoToHide.has(data.name);
-    })
-    .reduce((prev, curr) => {
-      return prev + curr.stargazers.totalCount;
-    }, 0);
+  // graphql api does not provide correct stars count, so we have to fetch it from another api
+  // https://api.github.com/users/${username}/repos
+  const resp = await github(`/users/${username}`)
+  const data = await resp.json()
+  const pageCount = Math.ceil(data.public_repos / 100)
+  const pages = []
+  for (let i = 0; i < pageCount; i++) {
+    pages.push(i)
+  }
 
-    // graphql api does not provide correct stars count, so we have to fetch it from another api
-    // https://api.github.com/users/${username}/repos
-    axios.get('https://api.github-star-counter.workers.dev/user/ShiinaRinne')
-    .then(response => {
-      console.log(response.data);
-      stats.totalStars = response.data["stars"];
-    })
-    .catch(error => {
-      console.error('Error fetching data:', error);
-    });
+  const result = {
+    stars: 0,
+    forks: 0,
+  }
+  await Promise.all(
+    pages.map(async p => {
+      const data = await getRepos(username, p)
+      result.stars += data.stars
+      result.forks += data.forks
+    }),
+  )
+  stats.totalStars = result.stars;
 
   stats.rank = calculateRank({
     all_commits: include_all_commits,
